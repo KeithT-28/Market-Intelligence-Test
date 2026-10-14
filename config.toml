@@ -1,0 +1,18 @@
+[theme]
+base = "dark"
+primaryColor = "#60A5FA"
+backgroundColor = "#0B1120"
+secondaryBackgroundColor = "#111B2E"
+textColor = "#E7EDF7"
+font = "sans serif"
+borderColor = "#26364F"
+dataframeBorderColor = "#26364F"
+dataframeHeaderBackgroundColor = "#162238"
+dataframeHeaderTextColor = "#E7EDF7"
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#0E1728"
+secondaryBackgroundColor = "#111B2E"
+textColor = "#E7EDF7"
+primaryColor = "#60A5FA"
