@@ -42,62 +42,105 @@ def get_free_macro_calendar(start_date: str, end_date: str) -> dict:
     except Exception as exc:
         return {"events": [], "error": str(exc)}
 
-def _macro_record_matches(event_row, record: dict) -> bool:
-    """Conservatively match a curated event to a free-feed event by date and keywords."""
+def _macro_family(event_row) -> str:
+    """Map curated event names to a conservative economic-release family."""
+    ev_name = str(event_row.get("event", "")).lower()
+    category = str(event_row.get("category", "")).lower()
+    if "cpi" in ev_name or "inflation" in ev_name:
+        return "cpi"
+    if "employment" in ev_name or "payroll" in ev_name or "jobs" in ev_name:
+        return "jobs"
+    if "gdp" in ev_name:
+        return "gdp"
+    if "personal income" in ev_name or "pce" in ev_name:
+        return "pce"
+    if "treasury" in ev_name or "refunding" in ev_name:
+        return "treasury"
+    if "central bank" in category or any(x in ev_name for x in ("fomc", "ecb", "boj", "bank of england", "mpc")):
+        return "central_bank"
+    return "other"
+
+
+def _macro_record_matches(event_row, record: dict, require_near_date: bool = True) -> bool:
+    """Match an event to a feed record by event family and, when requested, date."""
     try:
-        event_date = pd.to_datetime(event_row["Date"]).date()
-        raw_date = record.get("date") or record.get("scheduledAt") or record.get("datetime") or record.get("time_utc")
-        if not raw_date:
+        family = _macro_family(event_row)
+        if family in ("central_bank", "other"):
+            # Rate decisions are handled through their linked market/official sources.
             return False
-        record_date = pd.to_datetime(raw_date, utc=True).date() if "T" in str(raw_date) else pd.to_datetime(raw_date).date()
-        if abs((record_date - event_date).days) > 1:
-            return False
-        haystack = " ".join(str(record.get(k, "")) for k in ("name", "title", "event", "eventName", "series")).lower()
-        ev_name = str(event_row.get("event", "")).lower()
-        if "fomc" in ev_name or "fed" in ev_name:
-            return "fomc" in haystack or "federal reserve" in haystack
-        if "ecb" in ev_name or "european central bank" in ev_name:
-            return "ecb" in haystack or "european central bank" in haystack
-        if "boj" in ev_name or "bank of japan" in ev_name:
-            return "boj" in haystack or "bank of japan" in haystack
-        if "bank of england" in ev_name or "boe" in ev_name or "mpc" in ev_name:
-            return "boe" in haystack or "bank of england" in haystack or "monetary policy committee" in haystack
-        # For economic releases, use event keywords but avoid broad matches.
-        keywords = []
-        if "cpi" in ev_name or "inflation" in ev_name:
-            keywords = ["cpi", "consumer price"]
-        elif "employment" in ev_name or "payroll" in ev_name or "jobs" in ev_name:
-            keywords = ["employment situation", "nonfarm payroll", "jobs report"]
-        elif "gdp" in ev_name:
-            keywords = ["gdp", "gross domestic product"]
-        elif "personal income" in ev_name or "pce" in ev_name:
-            keywords = ["personal income", "pce", "personal consumption expenditures"]
-        elif "treasury" in ev_name or "refunding" in ev_name:
-            keywords = ["treasury", "refunding"]
-        return any(k in haystack for k in keywords) if keywords else False
+        if require_near_date:
+            event_date = pd.to_datetime(event_row["Date"]).date()
+            raw_date = record.get("date") or record.get("scheduledAt") or record.get("datetime") or record.get("time_utc")
+            if not raw_date:
+                return False
+            record_date = pd.to_datetime(raw_date, utc=True).date() if "T" in str(raw_date) else pd.to_datetime(raw_date).date()
+            if abs((record_date - event_date).days) > 1:
+                return False
+        haystack = " ".join(str(record.get(k, "")) for k in ("name", "title", "event", "eventName", "series", "category")).lower()
+        if family == "cpi":
+            return any(k in haystack for k in ("cpi", "consumer price", "inflation rate"))
+        if family == "jobs":
+            return any(k in haystack for k in ("employment situation", "nonfarm payroll", "non-farm payroll", "nonfarm employment", "non-farm employment", "jobs report", "unemployment rate"))
+        if family == "gdp":
+            return "gdp" in haystack or "gross domestic product" in haystack
+        if family == "pce":
+            return any(k in haystack for k in ("personal income", "pce", "personal consumption expenditures"))
+        if family == "treasury":
+            return "treasury" in haystack or "refunding" in haystack
+        return False
     except Exception:
         return False
 
-def _expectation_values(event_row, records: list) -> tuple[str, str, str]:
-    """Return consensus, actual/previous, and provider URL without fabricating values."""
-    matches = [r for r in records if _macro_record_matches(event_row, r)]
-    if not matches:
-        return "Not available from free feed", "—", "https://www.financecalendar.com/"
-    r = matches[0]
-    consensus = r.get("consensus") or r.get("forecast")
-    actual = r.get("actual")
-    prior = r.get("prior") or r.get("previous")
-    parts = []
-    if actual not in (None, "", "—"):
-        parts.append(f"Actual: {actual}")
-    if prior not in (None, "", "—"):
-        parts.append(f"Previous: {prior}")
-    actual_text = " · ".join(parts) if parts else "Pending release"
-    if consensus in (None, "", "—"):
-        consensus_text = "Consensus not published yet"
+
+def _clean_feed_value(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return None if value.lower() in ("", "none", "null", "n/a", "—", "-") else value
+
+
+def _expectation_values(event_row, upcoming_records: list, historical_records: list) -> tuple[str, str, str]:
+    """Return consensus and latest released/previous values, without inventing data."""
+    matches = [r for r in upcoming_records if _macro_record_matches(event_row, r, require_near_date=True)]
+    # If more than one matching record exists, prefer the closest event date.
+    if matches:
+        event_date = pd.to_datetime(event_row["Date"]).date()
+        matches.sort(key=lambda r: abs((pd.to_datetime(r.get("date") or r.get("scheduledAt") or r.get("datetime") or r.get("time_utc"), utc=True).date() - event_date).days))
+        upcoming = matches[0]
     else:
-        consensus_text = str(consensus)
-    source_url = r.get("url") or "https://www.financecalendar.com/"
+        upcoming = {}
+
+    consensus = _clean_feed_value(upcoming.get("consensus") or upcoming.get("forecast"))
+    upcoming_prior = _clean_feed_value(upcoming.get("prior") or upcoming.get("previous"))
+    actual = _clean_feed_value(upcoming.get("actual"))
+
+    # Look back for the latest released event in the same family. This is separate
+    # from the upcoming event because future calendar entries often have no actual yet.
+    past = [r for r in historical_records if _macro_record_matches(event_row, r, require_near_date=False)]
+    dated_past = []
+    for record in past:
+        raw_date = record.get("date") or record.get("scheduledAt") or record.get("datetime") or record.get("time_utc")
+        try:
+            record_date = pd.to_datetime(raw_date, utc=True).date() if "T" in str(raw_date) else pd.to_datetime(raw_date).date()
+        except Exception:
+            continue
+        record_actual = _clean_feed_value(record.get("actual"))
+        if record_actual:
+            dated_past.append((record_date, record, record_actual))
+    dated_past.sort(key=lambda item: item[0], reverse=True)
+
+    parts = []
+    if actual:
+        parts.append(f"Upcoming release actual: {actual}")
+    elif dated_past:
+        parts.append(f"Latest published: {dated_past[0][2]} ({dated_past[0][0].strftime('%d %b')})")
+    if upcoming_prior:
+        parts.append(f"Previous: {upcoming_prior}")
+    elif len(dated_past) > 1:
+        parts.append(f"Prior release: {dated_past[1][2]} ({dated_past[1][0].strftime('%d %b')})")
+    actual_text = " · ".join(parts) if parts else "No published reading found in free feed"
+    consensus_text = consensus or "Not published by free feed yet"
+    source_url = upcoming.get("url") or (dated_past[0][1].get("url") if dated_past else None) or "https://www.financecalendar.com/"
     return consensus_text, actual_text, source_url
 
 # -----------------------------
@@ -1081,16 +1124,26 @@ if page == "Macro Calendar":
         filtered = filtered.iloc[0:0]
     filtered = filtered.sort_values(["Date", "country", "event"])
 
-    # Free numeric consensus/actual values where the provider has published them.
+    # Fetch upcoming event records and a separate recent-history window. The latter
+    # lets the table show the latest released value even when the next event is weeks away.
     if not filtered.empty:
         api_start = filtered["Date"].min().strftime("%Y-%m-%d")
         api_end = min(filtered["Date"].max() + dt.timedelta(days=1), today_macro + dt.timedelta(days=92)).strftime("%Y-%m-%d")
+        history_start = (today_macro - dt.timedelta(days=90)).strftime("%Y-%m-%d")
+        history_end = today_macro.strftime("%Y-%m-%d")
         with st.spinner("Checking free market-expectations feed…"):
             free_calendar = get_free_macro_calendar(api_start, api_end)
+            historical_calendar = get_free_macro_calendar(history_start, history_end)
         free_calendar_records = free_calendar.get("events", [])
+        historical_calendar_records = historical_calendar.get("events", [])
+        if free_calendar.get("error") and not historical_calendar.get("error"):
+            free_calendar["error"] = None
+        elif historical_calendar.get("error") and not free_calendar.get("error"):
+            free_calendar["error"] = None
     else:
         free_calendar = {"events": [], "error": None}
         free_calendar_records = []
+        historical_calendar_records = []
 
     n1, n2, n3 = st.columns(3)
     n1.metric("Scheduled events", len(filtered))
@@ -1134,17 +1187,23 @@ if page == "Macro Calendar":
             else:
                 exp_text = "Watch announced issuance/refunding size versus expectations and the effect on Treasury supply and yields."
                 exp_label, exp_url = "US Treasury official source", "https://home.treasury.gov/policy-issues/financing-the-government"
-            consensus_text, actual_text, feed_url = _expectation_values(ev, free_calendar_records)
+            consensus_text, actual_text, feed_url = _expectation_values(ev, free_calendar_records, historical_calendar_records)
             # If a free numerical consensus is available, show it; otherwise retain the useful
             # event-specific explanation and explicitly label the number as unavailable.
-            if consensus_text != "Consensus not published yet" and consensus_text != "Not available from free feed":
-                expectation_cell = f"<strong>{html.escape(consensus_text)}</strong><div class='mi-macro-sub'>Free-feed consensus</div>"
-                expectation_url = feed_url
-                expectation_label = "Finance Calendar"
-            else:
-                expectation_cell = f"{html.escape(exp_text)}<div class='mi-macro-sub'>Numeric consensus: {html.escape(consensus_text.lower())}</div>"
+            if _macro_family(ev) == "central_bank":
+                expectation_cell = f"{html.escape(exp_text)}<div class='mi-macro-sub'>Numerical rate probabilities: check linked market source</div>"
                 expectation_url = exp_url
                 expectation_label = exp_label
+            else:
+                if consensus_text != "Not published by free feed yet":
+                    numeric_line = f"Upcoming consensus: {consensus_text}"
+                    expectation_url = feed_url
+                    expectation_label = "Finance Calendar"
+                else:
+                    numeric_line = "Upcoming consensus: not published by free feed yet"
+                    expectation_url = exp_url
+                    expectation_label = exp_label
+                expectation_cell = f"{html.escape(exp_text)}<div class='mi-macro-sub'>{html.escape(numeric_line)}</div>"
             imp = str(ev["importance"]).upper()
             imp_color = "#fbbf24" if imp == "HIGH" else ("#93c5fd" if imp == "MEDIUM" else "#94a3b8")
             date_text = pd.to_datetime(str(ev["date"])).strftime("%d %b %Y")
@@ -1173,7 +1232,7 @@ if page == "Macro Calendar":
             "</tr></thead><tbody>" + "".join(table_rows) + "</tbody></table></div>",
             unsafe_allow_html=True,
         )
-    st.caption("Calendar data and any consensus/actual figures are provided by [Finance Calendar](https://www.financecalendar.com/) (free feed; attribution required). Coverage and forecast availability vary by event. The feed does not provide a full live market-implied rate-probability curve. Markets often react to the difference between expectations and the outcome, not simply whether the number rose or fell.")
+    st.caption("Calendar data and any consensus/latest-release figures are provided by [Finance Calendar](https://www.financecalendar.com/) (free feed; attribution required). Coverage varies by event; if the provider has no published value, the dashboard labels it rather than estimating it. The feed does not provide a full live market-implied rate-probability curve. Markets often react to the difference between expectations and the outcome, not simply whether the number rose or fell.")
     if free_calendar.get("error"):
         st.warning("The free expectations feed could not be reached just now. The calendar remains available; numeric expectations will appear when the feed responds.")
 
