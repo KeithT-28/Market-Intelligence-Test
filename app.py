@@ -1026,6 +1026,70 @@ if page == "Macro Calendar":
                     f"<div style='font-size:.72rem;font-weight:750;color:{importance_color};white-space:nowrap'>{html.escape(str(ev['importance']).upper())}</div></div>",
                     unsafe_allow_html=True,
                 )
+
+    st.markdown("### Market expectations")
+    st.caption("Compare what markets are pricing with analyst or survey expectations. These are different measures: market-implied pricing comes from traded instruments, while surveys collect respondents' forecasts. The links below open the latest available source; this starter panel does not invent or hard-code live probabilities.")
+
+    expectation_sources = [
+        {
+            "country": "US",
+            "title": "Fed rate probabilities",
+            "provider": "CME FedWatch",
+            "measure": "Market-implied probabilities for upcoming FOMC target-rate outcomes, derived from federal funds futures.",
+            "url": "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",
+            "tag": "Market pricing",
+        },
+        {
+            "country": "US",
+            "title": "Dealer & market participant survey",
+            "provider": "Federal Reserve Bank of New York",
+            "measure": "Survey responses on the expected policy-rate path and other financial/economic variables; periodic, not tick-by-tick pricing.",
+            "url": "https://www.newyorkfed.org/markets/market-intelligence/survey-of-market-expectations",
+            "tag": "Survey",
+        },
+        {
+            "country": "Eurozone",
+            "title": "Monetary analyst expectations",
+            "provider": "European Central Bank",
+            "measure": "Survey expectations for policy rates, financial variables and the economy.",
+            "url": "https://www.ecb.europa.eu/stats/ecb_surveys/sma/html/index.en.html",
+            "tag": "Survey",
+        },
+        {
+            "country": "Japan",
+            "title": "BOJ policy meeting & outlook",
+            "provider": "Bank of Japan",
+            "measure": "Official meeting schedule, policy statements and Outlook Report; use alongside market pricing for the expected path.",
+            "url": "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm",
+            "tag": "Official source",
+        },
+        {
+            "country": "UK",
+            "title": "MPC schedule & policy outlook",
+            "provider": "Bank of England",
+            "measure": "Official MPC dates and Monetary Policy Report schedule; pair with market pricing from interest-rate futures or swaps.",
+            "url": "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates",
+            "tag": "Official source",
+        },
+    ]
+    visible_expectations = [x for x in expectation_sources if x["country"] in selected_countries]
+    if not visible_expectations:
+        st.info("Select US, Japan, Eurozone or UK above to see relevant market-expectation sources.")
+    else:
+        exp_cols = st.columns(2)
+        for idx, source in enumerate(visible_expectations):
+            with exp_cols[idx % 2]:
+                st.markdown(
+                    "<div style='background:#111827;border:1px solid #263449;border-radius:12px;padding:14px 15px;margin:6px 0 10px'>"
+                    f"<div style='font-size:.72rem;font-weight:750;letter-spacing:.05em;color:#93c5fd'>{html.escape(source['country'].upper())} · {html.escape(source['tag'].upper())}</div>"
+                    f"<div style='font-weight:750;color:#e7edf7;font-size:1rem;margin:6px 0'>{html.escape(source['title'])}</div>"
+                    f"<div style='font-size:.8rem;color:#9aa9bd;margin-bottom:7px'>{html.escape(source['provider'])}</div>"
+                    f"<div style='font-size:.85rem;color:#cbd5e1;line-height:1.5;margin-bottom:10px'>{html.escape(source['measure'])}</div>"
+                    f"<a href='{html.escape(source['url'], quote=True)}' target='_blank' rel='noopener noreferrer'>Open source ↗</a></div>",
+                    unsafe_allow_html=True,
+                )
+    st.info("How to read expectations: compare the expected outcome with the actual decision or release. Markets often react to the surprise versus what was already priced in, not simply to whether rates rose or fell. Market-implied probabilities can change quickly and are not guarantees.")
+
     st.markdown("### How to use this calendar")
     st.markdown("- **Central bank decisions:** compare the statement and guidance with what markets already expect; the surprise versus expectations often matters more than the decision alone.\n- **Inflation and employment:** compare actual data with consensus and previous readings once released. This calendar lists schedules, not forecasts.\n- **Treasury events:** refunding plans and auction sizes can influence supply expectations and longer-dated yields.\n- **Market impact:** the notes describe possible transmission channels, not a claim that an event caused a specific price move.")
     st.caption("Dates and descriptions are a curated starter calendar linked to official sources, not a live feed. Some times are omitted where official local-time details have not been verified. Always open the source link to confirm the latest schedule.")
