@@ -1002,93 +1002,72 @@ if page == "Macro Calendar":
     n2.metric("High importance", int((filtered["importance"] == "High").sum()))
     n3.metric("Countries / regions", int(filtered["country"].nunique()))
 
-    st.markdown("### Upcoming timeline")
+    st.markdown("### Upcoming timeline & market expectations")
+    st.caption("Expectations are shown beside each scheduled event. Live probabilities or consensus numbers are not fabricated: use the linked source to check the latest market pricing or forecast before the release.")
     if filtered.empty:
         st.info("No matching scheduled events in this time window. Try a longer horizon or select more countries/categories.")
     else:
-        for event_date, group in filtered.groupby("Date", sort=True):
-            st.markdown(f"<div style='margin:.8rem 0 .4rem;color:#93c5fd;font-weight:750;font-size:1.02rem'>{event_date.strftime('%A, %d %B %Y')}</div>", unsafe_allow_html=True)
-            for _, ev in group.iterrows():
-                importance_color = "#fbbf24" if ev["importance"] == "High" else ("#93c5fd" if ev["importance"] == "Medium" else "#94a3b8")
-                safe_event = html.escape(str(ev["event"]))
-                safe_detail = html.escape(str(ev["detail"]))
-                safe_country = html.escape(str(ev["country"]))
-                safe_category = html.escape(str(ev["category"]))
-                safe_source = html.escape(str(ev["source"]))
-                safe_url = html.escape(str(ev["url"]), quote=True)
-                st.markdown(
-                    "<div style='background:#111827;border:1px solid #263449;border-radius:12px;padding:13px 14px;margin:7px 0;display:flex;gap:12px;align-items:flex-start'>"
-                    f"<div style='min-width:72px;color:#bfdbfe;font-size:.82rem;font-weight:700'>{safe_country}</div>"
-                    f"<div style='flex:1'><div style='font-weight:700;color:#e7edf7'>{safe_event}</div>"
-                    f"<div style='font-size:.76rem;color:#9aa9bd;margin:3px 0 7px'>{safe_category}</div>"
-                    f"<div style='font-size:.87rem;color:#cbd5e1;line-height:1.5'>{safe_detail}</div>"
-                    f"<div style='margin-top:8px;font-size:.8rem'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{safe_source} ↗</a></div></div>"
-                    f"<div style='font-size:.72rem;font-weight:750;color:{importance_color};white-space:nowrap'>{html.escape(str(ev['importance']).upper())}</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-    st.markdown("### Market expectations")
-    st.caption("Compare what markets are pricing with analyst or survey expectations. These are different measures: market-implied pricing comes from traded instruments, while surveys collect respondents' forecasts. The links below open the latest available source; this starter panel does not invent or hard-code live probabilities.")
-
-    expectation_sources = [
-        {
-            "country": "US",
-            "title": "Fed rate probabilities",
-            "provider": "CME FedWatch",
-            "measure": "Market-implied probabilities for upcoming FOMC target-rate outcomes, derived from federal funds futures.",
-            "url": "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",
-            "tag": "Market pricing",
-        },
-        {
-            "country": "US",
-            "title": "Dealer & market participant survey",
-            "provider": "Federal Reserve Bank of New York",
-            "measure": "Survey responses on the expected policy-rate path and other financial/economic variables; periodic, not tick-by-tick pricing.",
-            "url": "https://www.newyorkfed.org/markets/market-intelligence/survey-of-market-expectations",
-            "tag": "Survey",
-        },
-        {
-            "country": "Eurozone",
-            "title": "Monetary analyst expectations",
-            "provider": "European Central Bank",
-            "measure": "Survey expectations for policy rates, financial variables and the economy.",
-            "url": "https://www.ecb.europa.eu/stats/ecb_surveys/sma/html/index.en.html",
-            "tag": "Survey",
-        },
-        {
-            "country": "Japan",
-            "title": "BOJ policy meeting & outlook",
-            "provider": "Bank of Japan",
-            "measure": "Official meeting schedule, policy statements and Outlook Report; use alongside market pricing for the expected path.",
-            "url": "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm",
-            "tag": "Official source",
-        },
-        {
-            "country": "UK",
-            "title": "MPC schedule & policy outlook",
-            "provider": "Bank of England",
-            "measure": "Official MPC dates and Monetary Policy Report schedule; pair with market pricing from interest-rate futures or swaps.",
-            "url": "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates",
-            "tag": "Official source",
-        },
-    ]
-    visible_expectations = [x for x in expectation_sources if x["country"] in selected_countries]
-    if not visible_expectations:
-        st.info("Select US, Japan, Eurozone or UK above to see relevant market-expectation sources.")
-    else:
-        exp_cols = st.columns(2)
-        for idx, source in enumerate(visible_expectations):
-            with exp_cols[idx % 2]:
-                st.markdown(
-                    "<div style='background:#111827;border:1px solid #263449;border-radius:12px;padding:14px 15px;margin:6px 0 10px'>"
-                    f"<div style='font-size:.72rem;font-weight:750;letter-spacing:.05em;color:#93c5fd'>{html.escape(source['country'].upper())} · {html.escape(source['tag'].upper())}</div>"
-                    f"<div style='font-weight:750;color:#e7edf7;font-size:1rem;margin:6px 0'>{html.escape(source['title'])}</div>"
-                    f"<div style='font-size:.8rem;color:#9aa9bd;margin-bottom:7px'>{html.escape(source['provider'])}</div>"
-                    f"<div style='font-size:.85rem;color:#cbd5e1;line-height:1.5;margin-bottom:10px'>{html.escape(source['measure'])}</div>"
-                    f"<a href='{html.escape(source['url'], quote=True)}' target='_blank' rel='noopener noreferrer'>Open source ↗</a></div>",
-                    unsafe_allow_html=True,
-                )
-    st.info("How to read expectations: compare the expected outcome with the actual decision or release. Markets often react to the surprise versus what was already priced in, not simply to whether rates rose or fell. Market-implied probabilities can change quickly and are not guarantees.")
+        expectation_links = {
+            "US": ("CME FedWatch", "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html"),
+            "Japan": ("BOJ policy outlook", "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm"),
+            "Eurozone": ("ECB analyst survey", "https://www.ecb.europa.eu/stats/ecb_surveys/sma/html/index.en.html"),
+            "UK": ("BoE policy outlook", "https://www.bankofengland.co.uk/monetary-policy"),
+        }
+        general_consensus_url = "https://www.investing.com/economic-calendar/"
+        table_rows = []
+        for _, ev in filtered.iterrows():
+            country = str(ev["country"])
+            event_name = str(ev["event"])
+            category = str(ev["category"])
+            if category == "Central bank decisions":
+                exp_text = {
+                    "US": "Market-implied target-rate probabilities; compare the decision with the path priced by futures.",
+                    "Japan": "Check market pricing for the policy-rate path; compare the decision and guidance with the BOJ outlook.",
+                    "Eurozone": "Compare the decision with analyst rate-path expectations and ECB guidance.",
+                    "UK": "Compare the decision with the expected Bank Rate path and MPC guidance.",
+                }.get(country, "Compare the policy decision with the latest market-implied rate path.")
+                exp_label, exp_url = expectation_links.get(country, ("Official policy source", str(ev["url"])))
+            elif category == "Inflation & employment":
+                if "CPI" in event_name or "inflation" in event_name.lower():
+                    exp_text = "Consensus CPI forecast versus the actual print; focus on core inflation and the surprise versus consensus."
+                else:
+                    exp_text = "Consensus payrolls, unemployment and wage-growth forecasts versus the actual release."
+                exp_label, exp_url = "Economic calendar consensus", general_consensus_url
+            elif category == "GDP & growth":
+                exp_text = "Consensus GDP growth estimate versus the reported figure; check revisions and consumption details."
+                exp_label, exp_url = "Economic calendar consensus", general_consensus_url
+            else:
+                exp_text = "Watch announced issuance/refunding size versus expectations and the effect on Treasury supply and yields."
+                exp_label, exp_url = "US Treasury official source", "https://home.treasury.gov/policy-issues/financing-the-government"
+            imp = str(ev["importance"]).upper()
+            imp_color = "#fbbf24" if imp == "HIGH" else ("#93c5fd" if imp == "MEDIUM" else "#94a3b8")
+            date_text = pd.to_datetime(str(ev["date"])).strftime("%d %b %Y")
+            table_rows.append(
+                "<tr>"
+                f"<td class='mi-macro-date'>{html.escape(date_text)}</td>"
+                f"<td>{html.escape(country)}</td>"
+                f"<td><strong>{html.escape(event_name)}</strong><div class='mi-macro-sub'>{html.escape(category)}</div></td>"
+                f"<td>{html.escape(exp_text)}</td>"
+                f"<td><a href='{html.escape(exp_url, quote=True)}' target='_blank' rel='noopener noreferrer'>{html.escape(exp_label)} ↗</a></td>"
+                f"<td style='font-weight:750;color:{imp_color}'>{html.escape(imp)}</td>"
+                "</tr>"
+            )
+        st.markdown(
+            "<style>"
+            ".mi-macro-table-wrap{width:100%;overflow-x:auto;border:1px solid #263449;border-radius:12px;margin:.4rem 0 1rem;}"
+            ".mi-macro-table{border-collapse:collapse;width:100%;min-width:900px;background:#111827;color:#e7edf7;font-size:.86rem;}"
+            ".mi-macro-table th{background:#172033;color:#bfdbfe;text-align:left;font-size:.76rem;letter-spacing:.03em;}"
+            ".mi-macro-table th,.mi-macro-table td{padding:11px 12px;border-bottom:1px solid #263449;vertical-align:top;line-height:1.45;}"
+            ".mi-macro-table tr:last-child td{border-bottom:0}.mi-macro-table a{color:#93c5fd;text-decoration:underline;}"
+            ".mi-macro-date{white-space:nowrap;font-weight:750;color:#bfdbfe}.mi-macro-sub{color:#9aa9bd;font-size:.75rem;margin-top:3px;}"
+            "@media(max-width:700px){.mi-macro-table{font-size:.8rem;min-width:820px}.mi-macro-table th,.mi-macro-table td{padding:9px 10px;}}"
+            "</style>"
+            "<div class='mi-macro-table-wrap'><table class='mi-macro-table'><thead><tr>"
+            "<th>Date</th><th>Country</th><th>Scheduled event</th><th>Market expectation / what to watch</th><th>Expectation source</th><th>Importance</th>"
+            "</tr></thead><tbody>" + "".join(table_rows) + "</tbody></table></div>",
+            unsafe_allow_html=True,
+        )
+    st.info("How to interpret this table: the expectation column describes the relevant market measure, not a live numeric forecast. Open the linked source for current pricing/consensus. Markets often react to the difference between expectations and the outcome, not simply whether the number rose or fell.")
 
     st.markdown("### How to use this calendar")
     st.markdown("- **Central bank decisions:** compare the statement and guidance with what markets already expect; the surprise versus expectations often matters more than the decision alone.\n- **Inflation and employment:** compare actual data with consensus and previous readings once released. This calendar lists schedules, not forecasts.\n- **Treasury events:** refunding plans and auction sizes can influence supply expectations and longer-dated yields.\n- **Market impact:** the notes describe possible transmission channels, not a claim that an event caused a specific price move.")
