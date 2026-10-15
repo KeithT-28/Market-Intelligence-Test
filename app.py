@@ -917,7 +917,7 @@ st.sidebar.markdown(
 )
 page = st.sidebar.radio(
     "WORKSPACE",
-    ["Overview", "Macro & Event Analysis", "ETF Explorer", "Sector Monitor", "G10 FX", "Commodities", "Instrument Explorer"],
+    ["Overview", "Macro Calendar", "Macro & Event Analysis", "ETF Explorer", "Sector Monitor", "G10 FX", "Commodities", "Instrument Explorer"],
 )
 st.sidebar.divider()
 period_label = st.sidebar.selectbox("Chart period", list(PERIOD_OPTIONS.keys()), index=2)
@@ -939,7 +939,98 @@ with refresh_note_col:
     st.caption("Requests the latest data available from Yahoo Finance. Daily chart dates identify the trading session, not a midnight quote time.")
 st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finance and is not guaranteed real-time. Verify prices with your broker or licensed provider.</div>", unsafe_allow_html=True)
 
-if page == "Overview":
+if page == "Macro Calendar":
+    st.markdown("<div class='mi-eyebrow'>GLOBAL MACRO / EVENT RADAR</div><h2 class='mi-market-section-title'>Macro Calendar</h2>", unsafe_allow_html=True)
+    st.caption("A country-filterable timeline of central-bank decisions, inflation and labour releases, GDP, and government financing events. Dates are sourced from official calendars and can change; click through to verify before relying on them.")
+
+    macro_events = [
+        {"date":"2026-10-27", "country":"US", "category":"Central bank decisions", "event":"FOMC meeting begins", "importance":"High", "detail":"Markets focus on the policy statement, rate guidance and press conference on 28 October.", "source":"Federal Reserve", "url":"https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"},
+        {"date":"2026-10-28", "country":"US", "category":"Central bank decisions", "event":"FOMC rate decision and press conference", "importance":"High", "detail":"Can reprice the expected US policy path, Treasury yields, the dollar and global risk appetite.", "source":"Federal Reserve", "url":"https://www.federalreserve.gov/monetarypolicy.htm"},
+        {"date":"2026-10-28", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB Governing Council meeting · Day 1", "importance":"High", "detail":"First day of the monetary-policy meeting; decision and press conference are scheduled for 29 October.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
+        {"date":"2026-10-29", "country":"Japan", "category":"Central bank decisions", "event":"BOJ monetary policy meeting · Day 1", "importance":"High", "detail":"Policy assessment and outlook report are important for Japanese yields and USD/JPY.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
+        {"date":"2026-10-29", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB policy decision and press conference", "importance":"High", "detail":"Watch the policy statement, inflation assessment and guidance for EUR rates and EUR crosses.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
+        {"date":"2026-10-29", "country":"US", "category":"GDP & growth", "event":"US GDP · Q3 advance estimate", "importance":"High", "detail":"The first estimate of quarterly growth can move Treasury yields and expectations for Fed policy.", "source":"Bureau of Economic Analysis", "url":"https://www.bea.gov/news/schedule/"},
+        {"date":"2026-10-29", "country":"US", "category":"Inflation & employment", "event":"US Personal Income and Outlays · September", "importance":"High", "detail":"Includes the PCE inflation measure watched closely by the Federal Reserve.", "source":"Bureau of Economic Analysis", "url":"https://www.bea.gov/news/schedule/"},
+        {"date":"2026-10-30", "country":"Japan", "category":"Central bank decisions", "event":"BOJ policy decision and Outlook Report", "importance":"High", "detail":"Potential catalyst for JPY, Japanese government bonds and global carry-trade positioning.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
+        {"date":"2026-11-02", "country":"US", "category":"Treasury & bond events", "event":"US Treasury quarterly refunding financing estimates", "importance":"High", "detail":"Financing estimates can influence expectations for Treasury issuance and term premium.", "source":"US Treasury", "url":"https://home.treasury.gov/policy-issues/financing-the-government/quarterly-refunding/most-recent-quarterly-refunding-documents/"},
+        {"date":"2026-11-04", "country":"US", "category":"Treasury & bond events", "event":"US Treasury quarterly refunding announcement", "importance":"High", "detail":"Watch coupon auction sizes and the Treasury's borrowing plans across maturities.", "source":"US Treasury", "url":"https://home.treasury.gov/policy-issues/financing-the-government/quarterly-refunding/most-recent-quarterly-refunding-documents/"},
+        {"date":"2026-11-05", "country":"UK", "category":"Central bank decisions", "event":"Bank of England MPC decision and Monetary Policy Report", "importance":"High", "detail":"The rate decision, vote split and inflation projections can move GBP and gilt yields.", "source":"Bank of England", "url":"https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates"},
+        {"date":"2026-11-06", "country":"US", "category":"Inflation & employment", "event":"US Employment Situation · October", "importance":"High", "detail":"Nonfarm payrolls, unemployment and wage growth help shape the Fed outlook.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/empSit.htm"},
+        {"date":"2026-11-10", "country":"US", "category":"Inflation & employment", "event":"US CPI · October", "importance":"High", "detail":"Headline and core inflation can change expected real rates and the dollar outlook.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/cpi.htm"},
+        {"date":"2026-11-25", "country":"US", "category":"GDP & growth", "event":"US GDP · Q3 second estimate", "importance":"Medium", "detail":"Revises the initial estimate of economic growth.", "source":"Bureau of Economic Analysis", "url":"https://www.bea.gov/news/schedule/"},
+        {"date":"2026-12-04", "country":"US", "category":"Inflation & employment", "event":"US Employment Situation · November", "importance":"High", "detail":"A key labour-market input ahead of the December FOMC meeting.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/empSit.htm"},
+        {"date":"2026-12-08", "country":"US", "category":"Central bank decisions", "event":"FOMC meeting begins", "importance":"High", "detail":"December meeting includes updated economic projections.", "source":"Federal Reserve", "url":"https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"},
+        {"date":"2026-12-09", "country":"US", "category":"Central bank decisions", "event":"FOMC rate decision and projections", "importance":"High", "detail":"Updated projections and the press conference can move rates, USD and risk assets.", "source":"Federal Reserve", "url":"https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"},
+        {"date":"2026-12-10", "country":"US", "category":"Inflation & employment", "event":"US CPI · November", "importance":"High", "detail":"Inflation data may influence the expected path of policy rates into year-end.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/cpi.htm"},
+        {"date":"2026-12-17", "country":"Japan", "category":"Central bank decisions", "event":"BOJ monetary policy meeting begins", "importance":"High", "detail":"A late-year policy decision to watch for JPY and Japanese yields.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
+        {"date":"2026-12-17", "country":"UK", "category":"Central bank decisions", "event":"Bank of England MPC decision", "importance":"High", "detail":"Policy decision and minutes can move GBP and UK government bond yields.", "source":"Bank of England", "url":"https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates"},
+        {"date":"2026-12-17", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB Governing Council meeting · Day 1", "importance":"High", "detail":"The December policy meeting runs into 18 December; check the official calendar for details.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
+        {"date":"2026-12-18", "country":"Japan", "category":"Central bank decisions", "event":"BOJ policy decision", "importance":"High", "detail":"Decision and outlook can affect JPY, local bonds and global rates positioning.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
+        {"date":"2026-12-18", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB policy decision and press conference", "importance":"High", "detail":"Decision follows the Governing Council meeting; confirm the final release schedule on the official calendar.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
+    ]
+    event_df = pd.DataFrame(macro_events)
+    event_df["Date"] = pd.to_datetime(event_df["date"]).dt.date
+    today_macro = dt.date.today()
+    horizon = st.radio("TIME HORIZON", ["Next 7 days", "Next 30 days", "Next 90 days", "All scheduled dates"], index=1, horizontal=True, key="macro_calendar_horizon")
+    f1, f2, f3 = st.columns([1, 1, 1])
+    with f1:
+        country_options = ["US", "Japan", "Eurozone", "UK"]
+        selected_countries = st.multiselect("Country / region", country_options, default=["US", "Japan", "Eurozone", "UK"], key="macro_calendar_countries")
+    with f2:
+        category_options = ["Central bank decisions", "Inflation & employment", "GDP & growth", "Treasury & bond events"]
+        selected_categories = st.multiselect("Event category", category_options, default=category_options, key="macro_calendar_categories")
+    with f3:
+        importance_options = st.multiselect("Importance", ["High", "Medium", "Low"], default=["High", "Medium"], key="macro_calendar_importance")
+    max_days = {"Next 7 days": 7, "Next 30 days": 30, "Next 90 days": 90, "All scheduled dates": 9999}[horizon]
+    filtered = event_df[(event_df["Date"] >= today_macro) & (event_df["Date"] <= today_macro + dt.timedelta(days=max_days))]
+    if selected_countries:
+        filtered = filtered[filtered["country"].isin(selected_countries)]
+    else:
+        filtered = filtered.iloc[0:0]
+    if selected_categories:
+        filtered = filtered[filtered["category"].isin(selected_categories)]
+    else:
+        filtered = filtered.iloc[0:0]
+    if importance_options:
+        filtered = filtered[filtered["importance"].isin(importance_options)]
+    else:
+        filtered = filtered.iloc[0:0]
+    filtered = filtered.sort_values(["Date", "country", "event"])
+
+    n1, n2, n3 = st.columns(3)
+    n1.metric("Scheduled events", len(filtered))
+    n2.metric("High importance", int((filtered["importance"] == "High").sum()))
+    n3.metric("Countries / regions", int(filtered["country"].nunique()))
+
+    st.markdown("### Upcoming timeline")
+    if filtered.empty:
+        st.info("No matching scheduled events in this time window. Try a longer horizon or select more countries/categories.")
+    else:
+        for event_date, group in filtered.groupby("Date", sort=True):
+            st.markdown(f"<div style='margin:.8rem 0 .4rem;color:#93c5fd;font-weight:750;font-size:1.02rem'>{event_date.strftime('%A, %d %B %Y')}</div>", unsafe_allow_html=True)
+            for _, ev in group.iterrows():
+                importance_color = "#fbbf24" if ev["importance"] == "High" else ("#93c5fd" if ev["importance"] == "Medium" else "#94a3b8")
+                safe_event = html.escape(str(ev["event"]))
+                safe_detail = html.escape(str(ev["detail"]))
+                safe_country = html.escape(str(ev["country"]))
+                safe_category = html.escape(str(ev["category"]))
+                safe_source = html.escape(str(ev["source"]))
+                safe_url = html.escape(str(ev["url"]), quote=True)
+                st.markdown(
+                    "<div style='background:#111827;border:1px solid #263449;border-radius:12px;padding:13px 14px;margin:7px 0;display:flex;gap:12px;align-items:flex-start'>"
+                    f"<div style='min-width:72px;color:#bfdbfe;font-size:.82rem;font-weight:700'>{safe_country}</div>"
+                    f"<div style='flex:1'><div style='font-weight:700;color:#e7edf7'>{safe_event}</div>"
+                    f"<div style='font-size:.76rem;color:#9aa9bd;margin:3px 0 7px'>{safe_category}</div>"
+                    f"<div style='font-size:.87rem;color:#cbd5e1;line-height:1.5'>{safe_detail}</div>"
+                    f"<div style='margin-top:8px;font-size:.8rem'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{safe_source} ↗</a></div></div>"
+                    f"<div style='font-size:.72rem;font-weight:750;color:{importance_color};white-space:nowrap'>{html.escape(str(ev['importance']).upper())}</div></div>",
+                    unsafe_allow_html=True,
+                )
+    st.markdown("### How to use this calendar")
+    st.markdown("- **Central bank decisions:** compare the statement and guidance with what markets already expect; the surprise versus expectations often matters more than the decision alone.\n- **Inflation and employment:** compare actual data with consensus and previous readings once released. This calendar lists schedules, not forecasts.\n- **Treasury events:** refunding plans and auction sizes can influence supply expectations and longer-dated yields.\n- **Market impact:** the notes describe possible transmission channels, not a claim that an event caused a specific price move.")
+    st.caption("Dates and descriptions are a curated starter calendar linked to official sources, not a live feed. Some times are omitted where official local-time details have not been verified. Always open the source link to confirm the latest schedule.")
+
+elif page == "Overview":
     st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2 class='mi-market-section-title'>Market snapshot</h2>", unsafe_allow_html=True)
     overview_tickers = tuple(dict.fromkeys(("^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values(), *COMMODITY_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
