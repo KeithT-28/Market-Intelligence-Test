@@ -1,7 +1,9 @@
 import datetime as dt
 import html
+import json
 from typing import Dict, List
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import plotly.express as px
@@ -15,6 +17,88 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Free economic-calendar feed. Forecasts are shown only when the provider supplies them.
+@st.cache_data(ttl=900, show_spinner=False)
+def get_free_macro_calendar(start_date: str, end_date: str) -> dict:
+    """Fetch free calendar consensus/actual values; fail gracefully if unavailable."""
+    params = urlencode({"from": start_date, "to": end_date, "limit": 500})
+    url = f"https://www.financecalendar.com/wp-json/fc/v1/calendar?{params}"
+    req = Request(url, headers={"User-Agent": "MarketIntelligenceDashboard/1.0"})
+    try:
+        with urlopen(req, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict):
+            records = payload.get("events", payload.get("data", []))
+            if isinstance(records, dict):
+                records = records.get("events", [])
+        else:
+            records = []
+        if not isinstance(records, list):
+            records = []
+        return {"events": [r for r in records if isinstance(r, dict)], "error": None}
+    except Exception as exc:
+        return {"events": [], "error": str(exc)}
+
+def _macro_record_matches(event_row, record: dict) -> bool:
+    """Conservatively match a curated event to a free-feed event by date and keywords."""
+    try:
+        event_date = pd.to_datetime(event_row["Date"]).date()
+        raw_date = record.get("date") or record.get("scheduledAt") or record.get("datetime") or record.get("time_utc")
+        if not raw_date:
+            return False
+        record_date = pd.to_datetime(raw_date, utc=True).date() if "T" in str(raw_date) else pd.to_datetime(raw_date).date()
+        if abs((record_date - event_date).days) > 1:
+            return False
+        haystack = " ".join(str(record.get(k, "")) for k in ("name", "title", "event", "eventName", "series")).lower()
+        ev_name = str(event_row.get("event", "")).lower()
+        if "fomc" in ev_name or "fed" in ev_name:
+            return "fomc" in haystack or "federal reserve" in haystack
+        if "ecb" in ev_name or "european central bank" in ev_name:
+            return "ecb" in haystack or "european central bank" in haystack
+        if "boj" in ev_name or "bank of japan" in ev_name:
+            return "boj" in haystack or "bank of japan" in haystack
+        if "bank of england" in ev_name or "boe" in ev_name or "mpc" in ev_name:
+            return "boe" in haystack or "bank of england" in haystack or "monetary policy committee" in haystack
+        # For economic releases, use event keywords but avoid broad matches.
+        keywords = []
+        if "cpi" in ev_name or "inflation" in ev_name:
+            keywords = ["cpi", "consumer price"]
+        elif "employment" in ev_name or "payroll" in ev_name or "jobs" in ev_name:
+            keywords = ["employment situation", "nonfarm payroll", "jobs report"]
+        elif "gdp" in ev_name:
+            keywords = ["gdp", "gross domestic product"]
+        elif "personal income" in ev_name or "pce" in ev_name:
+            keywords = ["personal income", "pce", "personal consumption expenditures"]
+        elif "treasury" in ev_name or "refunding" in ev_name:
+            keywords = ["treasury", "refunding"]
+        return any(k in haystack for k in keywords) if keywords else False
+    except Exception:
+        return False
+
+def _expectation_values(event_row, records: list) -> tuple[str, str, str]:
+    """Return consensus, actual/previous, and provider URL without fabricating values."""
+    matches = [r for r in records if _macro_record_matches(event_row, r)]
+    if not matches:
+        return "Not available from free feed", "—", "https://www.financecalendar.com/"
+    r = matches[0]
+    consensus = r.get("consensus") or r.get("forecast")
+    actual = r.get("actual")
+    prior = r.get("prior") or r.get("previous")
+    parts = []
+    if actual not in (None, "", "—"):
+        parts.append(f"Actual: {actual}")
+    if prior not in (None, "", "—"):
+        parts.append(f"Previous: {prior}")
+    actual_text = " · ".join(parts) if parts else "Pending release"
+    if consensus in (None, "", "—"):
+        consensus_text = "Consensus not published yet"
+    else:
+        consensus_text = str(consensus)
+    source_url = r.get("url") or "https://www.financecalendar.com/"
+    return consensus_text, actual_text, source_url
 
 # -----------------------------
 # App configuration / universe
@@ -997,13 +1081,24 @@ if page == "Macro Calendar":
         filtered = filtered.iloc[0:0]
     filtered = filtered.sort_values(["Date", "country", "event"])
 
+    # Free numeric consensus/actual values where the provider has published them.
+    if not filtered.empty:
+        api_start = filtered["Date"].min().strftime("%Y-%m-%d")
+        api_end = min(filtered["Date"].max() + dt.timedelta(days=1), today_macro + dt.timedelta(days=92)).strftime("%Y-%m-%d")
+        with st.spinner("Checking free market-expectations feed…"):
+            free_calendar = get_free_macro_calendar(api_start, api_end)
+        free_calendar_records = free_calendar.get("events", [])
+    else:
+        free_calendar = {"events": [], "error": None}
+        free_calendar_records = []
+
     n1, n2, n3 = st.columns(3)
     n1.metric("Scheduled events", len(filtered))
     n2.metric("High importance", int((filtered["importance"] == "High").sum()))
     n3.metric("Countries / regions", int(filtered["country"].nunique()))
 
     st.markdown("### Upcoming timeline & market expectations")
-    st.caption("Expectations are shown beside each scheduled event. Live probabilities or consensus numbers are not fabricated: use the linked source to check the latest market pricing or forecast before the release.")
+    st.caption("Free numerical consensus/actual values are shown when the free calendar feed publishes a matching event. Missing figures are labelled rather than estimated. Central-bank rate probabilities are not available from this feed and must be checked against the linked official market source.")
     if filtered.empty:
         st.info("No matching scheduled events in this time window. Try a longer horizon or select more countries/categories.")
     else:
@@ -1039,6 +1134,17 @@ if page == "Macro Calendar":
             else:
                 exp_text = "Watch announced issuance/refunding size versus expectations and the effect on Treasury supply and yields."
                 exp_label, exp_url = "US Treasury official source", "https://home.treasury.gov/policy-issues/financing-the-government"
+            consensus_text, actual_text, feed_url = _expectation_values(ev, free_calendar_records)
+            # If a free numerical consensus is available, show it; otherwise retain the useful
+            # event-specific explanation and explicitly label the number as unavailable.
+            if consensus_text != "Consensus not published yet" and consensus_text != "Not available from free feed":
+                expectation_cell = f"<strong>{html.escape(consensus_text)}</strong><div class='mi-macro-sub'>Free-feed consensus</div>"
+                expectation_url = feed_url
+                expectation_label = "Finance Calendar"
+            else:
+                expectation_cell = f"{html.escape(exp_text)}<div class='mi-macro-sub'>Numeric consensus: {html.escape(consensus_text.lower())}</div>"
+                expectation_url = exp_url
+                expectation_label = exp_label
             imp = str(ev["importance"]).upper()
             imp_color = "#fbbf24" if imp == "HIGH" else ("#93c5fd" if imp == "MEDIUM" else "#94a3b8")
             date_text = pd.to_datetime(str(ev["date"])).strftime("%d %b %Y")
@@ -1047,8 +1153,8 @@ if page == "Macro Calendar":
                 f"<td class='mi-macro-date'>{html.escape(date_text)}</td>"
                 f"<td>{html.escape(country)}</td>"
                 f"<td><strong>{html.escape(event_name)}</strong><div class='mi-macro-sub'>{html.escape(category)}</div></td>"
-                f"<td>{html.escape(exp_text)}</td>"
-                f"<td><a href='{html.escape(exp_url, quote=True)}' target='_blank' rel='noopener noreferrer'>{html.escape(exp_label)} ↗</a></td>"
+                f"<td>{expectation_cell}<div class='mi-macro-sub'>Actual / previous: {html.escape(actual_text)}</div></td>"
+                f"<td><a href='{html.escape(expectation_url, quote=True)}' target='_blank' rel='noopener noreferrer'>{html.escape(expectation_label)} ↗</a></td>"
                 f"<td style='font-weight:750;color:{imp_color}'>{html.escape(imp)}</td>"
                 "</tr>"
             )
@@ -1067,7 +1173,9 @@ if page == "Macro Calendar":
             "</tr></thead><tbody>" + "".join(table_rows) + "</tbody></table></div>",
             unsafe_allow_html=True,
         )
-    st.info("How to interpret this table: the expectation column describes the relevant market measure, not a live numeric forecast. Open the linked source for current pricing/consensus. Markets often react to the difference between expectations and the outcome, not simply whether the number rose or fell.")
+    st.caption("Calendar data and any consensus/actual figures are provided by [Finance Calendar](https://www.financecalendar.com/) (free feed; attribution required). Coverage and forecast availability vary by event. The feed does not provide a full live market-implied rate-probability curve. Markets often react to the difference between expectations and the outcome, not simply whether the number rose or fell.")
+    if free_calendar.get("error"):
+        st.warning("The free expectations feed could not be reached just now. The calendar remains available; numeric expectations will appear when the feed responds.")
 
     st.markdown("### How to use this calendar")
     st.markdown("- **Central bank decisions:** compare the statement and guidance with what markets already expect; the surprise versus expectations often matters more than the decision alone.\n- **Inflation and employment:** compare actual data with consensus and previous readings once released. This calendar lists schedules, not forecasts.\n- **Treasury events:** refunding plans and auction sizes can influence supply expectations and longer-dated yields.\n- **Market impact:** the notes describe possible transmission channels, not a claim that an event caused a specific price move.")
