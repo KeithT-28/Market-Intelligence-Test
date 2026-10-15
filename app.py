@@ -46,7 +46,9 @@ def _macro_family(event_row) -> str:
     """Map curated event names to a conservative economic-release family."""
     ev_name = str(event_row.get("event", "")).lower()
     category = str(event_row.get("category", "")).lower()
-    if "cpi" in ev_name or "inflation" in ev_name:
+    if "ppi" in ev_name or "producer price" in ev_name or "producer prices" in ev_name:
+        return "ppi"
+    if "cpi" in ev_name or "consumer price" in ev_name or "inflation" in ev_name:
         return "cpi"
     if "employment" in ev_name or "payroll" in ev_name or "jobs" in ev_name:
         return "jobs"
@@ -77,6 +79,8 @@ def _macro_record_matches(event_row, record: dict, require_near_date: bool = Tru
             if abs((record_date - event_date).days) > 1:
                 return False
         haystack = " ".join(str(record.get(k, "")) for k in ("name", "title", "event", "eventName", "series", "category")).lower()
+        if family == "ppi":
+            return any(k in haystack for k in ("ppi", "producer price", "producer prices"))
         if family == "cpi":
             return any(k in haystack for k in ("cpi", "consumer price", "inflation rate"))
         if family == "jobs":
@@ -1076,6 +1080,9 @@ if page == "Macro Calendar":
         {"date":"2026-10-28", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB Governing Council meeting · Day 1", "importance":"High", "detail":"First day of the monetary-policy meeting; decision and press conference are scheduled for 29 October.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
         {"date":"2026-10-29", "country":"Japan", "category":"Central bank decisions", "event":"BOJ monetary policy meeting · Day 1", "importance":"High", "detail":"Policy assessment and outlook report are important for Japanese yields and USD/JPY.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
         {"date":"2026-10-29", "country":"Eurozone", "category":"Central bank decisions", "event":"ECB policy decision and press conference", "importance":"High", "detail":"Watch the policy statement, inflation assessment and guidance for EUR rates and EUR crosses.", "source":"European Central Bank", "url":"https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"},
+        {"date":"2026-10-15", "country":"US", "category":"Producer prices (PPI)", "event":"US PPI · September", "importance":"High", "detail":"Producer-price inflation can provide an early signal on pipeline price pressures; compare headline and core components with consensus.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/ppi.htm"},
+        {"date":"2026-11-13", "country":"US", "category":"Producer prices (PPI)", "event":"US PPI · October", "importance":"High", "detail":"Producer-price inflation can affect inflation expectations, Treasury yields and the expected Fed path.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/ppi.htm"},
+        {"date":"2026-12-15", "country":"US", "category":"Producer prices (PPI)", "event":"US PPI · November", "importance":"High", "detail":"Watch headline and core producer-price readings and any revisions to prior months.", "source":"Bureau of Labor Statistics", "url":"https://www.bls.gov/schedule/news_release/ppi.htm"},
         {"date":"2026-10-29", "country":"US", "category":"GDP & growth", "event":"US GDP · Q3 advance estimate", "importance":"High", "detail":"The first estimate of quarterly growth can move Treasury yields and expectations for Fed policy.", "source":"Bureau of Economic Analysis", "url":"https://www.bea.gov/news/schedule/"},
         {"date":"2026-10-29", "country":"US", "category":"Inflation & employment", "event":"US Personal Income and Outlays · September", "importance":"High", "detail":"Includes the PCE inflation measure watched closely by the Federal Reserve.", "source":"Bureau of Economic Analysis", "url":"https://www.bea.gov/news/schedule/"},
         {"date":"2026-10-30", "country":"Japan", "category":"Central bank decisions", "event":"BOJ policy decision and Outlook Report", "importance":"High", "detail":"Potential catalyst for JPY, Japanese government bonds and global carry-trade positioning.", "source":"Bank of Japan", "url":"https://www.boj.or.jp/en/mopo/mpmsche_minu/m_ref/mref250731a.pdf"},
@@ -1104,7 +1111,7 @@ if page == "Macro Calendar":
         country_options = ["US", "Japan", "Eurozone", "UK"]
         selected_countries = st.multiselect("Country / region", country_options, default=["US", "Japan", "Eurozone", "UK"], key="macro_calendar_countries")
     with f2:
-        category_options = ["Central bank decisions", "Inflation & employment", "GDP & growth", "Treasury & bond events"]
+        category_options = ["Central bank decisions", "Inflation & employment", "Producer prices (PPI)", "GDP & growth", "Treasury & bond events"]
         selected_categories = st.multiselect("Event category", category_options, default=category_options, key="macro_calendar_categories")
     with f3:
         importance_options = st.multiselect("Importance", ["High", "Medium", "Low"], default=["High", "Medium"], key="macro_calendar_importance")
@@ -1181,6 +1188,9 @@ if page == "Macro Calendar":
                 else:
                     exp_text = "Consensus payrolls, unemployment and wage-growth forecasts versus the actual release."
                 exp_label, exp_url = "Economic calendar consensus", general_consensus_url
+            elif category == "Producer prices (PPI)" or "PPI" in event_name or "producer price" in event_name.lower():
+                exp_text = "Compare headline and core producer-price consensus with the actual release; check revisions and whether pipeline price pressure is broadening."
+                exp_label, exp_url = "BLS PPI release calendar", "https://www.bls.gov/schedule/news_release/ppi.htm"
             elif category == "GDP & growth":
                 exp_text = "Consensus GDP growth estimate versus the reported figure; check revisions and consumption details."
                 exp_label, exp_url = "Economic calendar consensus", general_consensus_url
@@ -2116,6 +2126,7 @@ elif page == "Macro & Event Analysis":
     # Curated historical dates transcribed from official BLS and Federal Reserve calendars.
     # This is a starter library, not a live calendar feed; always verify dates at the source.
     cpi_source = "https://www.bls.gov/schedule/news_release/cpi.htm"
+    ppi_source = "https://www.bls.gov/schedule/news_release/ppi.htm"
     jobs_source = "https://www.bls.gov/schedule/news_release/empSit.htm"
     fomc_source = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
     bea_source = "https://www.bea.gov/news/schedule"
@@ -2137,6 +2148,17 @@ elif page == "Macro & Event Analysis":
         {"type": "CPI / inflation", "date": "2026-07-14", "label": "CPI · June 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
         {"type": "CPI / inflation", "date": "2026-08-12", "label": "CPI · July 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
         {"type": "CPI / inflation", "date": "2026-09-11", "label": "CPI · August 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        # PPI release dates from the official BLS calendar.
+        {"type": "PPI / producer inflation", "date": "2026-01-30", "label": "PPI · December 2025", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-02-27", "label": "PPI · January 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-03-18", "label": "PPI · February 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-04-14", "label": "PPI · March 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-05-13", "label": "PPI · April 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-06-11", "label": "PPI · May 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-07-15", "label": "PPI · June 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-08-13", "label": "PPI · July 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-09-10", "label": "PPI · August 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
+        {"type": "PPI / producer inflation", "date": "2026-10-15", "label": "PPI · September 2026", "source": ppi_source, "source_name": "BLS PPI calendar"},
         # Employment Situation dates from the BLS release calendar.
         {"type": "Employment / payrolls", "date": "2025-01-10", "label": "Employment Situation · December 2024", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
         {"type": "Employment / payrolls", "date": "2025-04-04", "label": "Employment Situation · March 2025", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
@@ -2176,11 +2198,12 @@ elif page == "Macro & Event Analysis":
     with event_col1:
         event_type = st.selectbox(
             "Event type",
-            ["CPI / inflation", "FOMC / interest rates", "Employment / payrolls", "GDP / growth", "Other / custom"],
+            ["CPI / inflation", "PPI / producer inflation", "FOMC / interest rates", "Employment / payrolls", "GDP / growth", "Other / custom"],
             key="macro_event_type",
         )
     source_by_type = {
         "CPI / inflation": (cpi_source, "BLS CPI calendar"),
+        "PPI / producer inflation": (ppi_source, "BLS PPI calendar"),
         "Employment / payrolls": (jobs_source, "BLS Employment Situation calendar"),
         "FOMC / interest rates": (fomc_source, "Federal Reserve FOMC calendar"),
         "GDP / growth": (bea_source, "BEA release schedule"),
